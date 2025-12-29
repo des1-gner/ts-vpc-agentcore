@@ -7,6 +7,7 @@ Simple guide to deploy a TypeScript agent to Amazon Bedrock AgentCore Runtime wi
 - Node.js 18+
 - AWS account with appropriate permissions
 - AWS CLI configured with credentials
+- Python 3.10+ (for agentcore CLI)
 - Model access: Anthropic Claude Sonnet 4.5 enabled in Bedrock console (ap-southeast-1)
 
 ---
@@ -72,103 +73,139 @@ Create these 3 endpoints:
 
 ## Part 2: Create Agent
 
-### Install CLI and Create Project
+### Install CLI
 
 ```bash
-npm install -g bedrock-agentcore
+pip install bedrock-agentcore
+pip install bedrock-agentcore-starter-toolkit
+```
 
+### Create Project
+
+```bash
 mkdir agentcore-simple
 cd agentcore-simple
-mkdir agent
-cd agent
-
 npm init -y
-npm install bedrock-agentcore
+```
+
+### Install Dependencies
+
+```bash
+npm install @strands-agents/sdk zod
 npm install --save-dev typescript @types/node
 ```
 
 ### Create Agent Code
 
-Create `agent/agent.ts`:
+Create `index.ts`:
 
 ```typescript
-import { BedrockAgentCoreApp } from 'bedrock-agentcore';
+import { Agent, BedrockModel, tool } from '@strands-agents/sdk'
+import { z } from 'zod'
 
-const app = new BedrockAgentCoreApp();
+const timestampTool = tool({
+  name: 'get_timestamp',
+  description: 'Get the current timestamp',
+  inputSchema: z.object({}),
+  callback: () => {
+    const timestamp = new Date().toISOString()
+    console.log(`[TOOL] get_timestamp called: ${timestamp}`)
+    return `Current timestamp: ${timestamp}`
+  },
+})
 
-app.entrypoint(async (payload: any, context: any) => {
+const model = new BedrockModel({
+  region: 'ap-southeast-1',
+})
+
+const agent = new Agent({
+  systemPrompt: 'You are a helpful assistant that can provide the current timestamp.',
+  model,
+  tools: [timestampTool],
+})
+
+async function handler(event: any) {
   try {
-    console.log('[INFO] Agent invoked with payload:', JSON.stringify(payload));
+    console.log('[INFO] Agent invoked with event:', JSON.stringify(event))
     
-    const userInput = payload.prompt || payload.input || 'Hello!';
-    console.log('[INFO] User input:', userInput);
+    const prompt = event.prompt || event.input || 'Hello!'
+    console.log('[INFO] User prompt:', prompt)
     
-    const response = {
-      message: `Received: ${userInput}`,
+    const result = await agent.invoke(prompt)
+    
+    console.log('[INFO] Agent response:', result)
+    
+    return {
+      message: result,
       timestamp: new Date().toISOString(),
       status: 'success'
-    };
-    
-    console.log('[INFO] Returning response:', JSON.stringify(response));
-    
-    return response;
+    }
   } catch (error: any) {
-    console.error('[ERROR] Error in agent:', error);
+    console.error('[ERROR] Error in agent:', error)
     return {
       error: error.message,
       status: 'error'
-    };
+    }
   }
-});
-
-if (require.main === module) {
-  app.run();
 }
+
+export { handler }
 ```
 
 ### Create TypeScript Config
 
-Create `agent/tsconfig.json`:
+Create `tsconfig.json`:
 
 ```json
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node"
   },
-  "include": ["agent.ts"],
+  "include": ["index.ts"],
   "exclude": ["node_modules"]
 }
 ```
 
 ### Update package.json
 
-Edit `agent/package.json`:
+Edit `package.json`:
 
 ```json
 {
   "name": "agentcore-simple-agent",
   "version": "1.0.0",
-  "main": "dist/agent.js",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/agent.js"
+    "start": "node dist/index.js"
   },
   "dependencies": {
-    "bedrock-agentcore": "^0.1.0"
+    "@strands-agents/sdk": "latest",
+    "zod": "^3.22.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
     "@types/node": "^20.0.0"
   }
 }
+```
+
+### Create requirements.txt
+
+Create `requirements.txt`:
+
+```
+bedrock-agentcore>=0.1.0
 ```
 
 ### Build
@@ -181,15 +218,20 @@ npm run build
 
 ## Part 3: Deploy
 
-### Configure and Deploy
+### Configure
 
 ```bash
-agentcore configure -e agent.ts
+agentcore configure -e index.ts
 ```
 
-Press Enter for defaults, select:
-- Authorization: `no`
-- Region: `ap-southeast-1`
+During configuration:
+- **Execution Role**: Press Enter to auto-create
+- **ECR Repository**: Press Enter to auto-create
+- **Dependency file**: Select `package.json`
+- **Authorization**: `no`
+- **Region**: `ap-southeast-1`
+
+### Launch
 
 ```bash
 agentcore launch
@@ -216,14 +258,14 @@ Save the Agent ARN from output.
 ### Test with CLI
 
 ```bash
-agentcore invoke '{"prompt": "Hello from VPC!"}'
+agentcore invoke '{"prompt": "What is the current timestamp?"}'
 ```
 
 Expected output:
 
 ```json
 {
-  "message": "Received: Hello from VPC!",
+  "message": "Current timestamp: 2025-12-30T10:15:23.456Z",
   "timestamp": "2025-12-30T10:15:23.456Z",
   "status": "success"
 }
@@ -236,7 +278,8 @@ Expected output:
 3. Click log stream to see:
 
 ```
-[INFO] Agent invoked with payload: {"prompt":"Hello from VPC!"}
-[INFO] User input: Hello from VPC!
-[INFO] Returning response: {"message":"Received: Hello from VPC!","timestamp":"...","status":"success"}
+[INFO] Agent invoked with event: {"prompt":"What is the current timestamp?"}
+[INFO] User prompt: What is the current timestamp?
+[TOOL] get_timestamp called: 2025-12-30T10:15:23.456Z
+[INFO] Agent response: Current timestamp: 2025-12-30T10:15:23.456Z
 ```
