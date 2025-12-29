@@ -1,5 +1,3 @@
-The issue is your package-lock.json is out of sync. Let me give you a clean, working setup:
-
 # Bedrock AgentCore with TypeScript - VPC Deployment
 
 Simple guide to deploy a TypeScript agent to Amazon Bedrock AgentCore Runtime with VPC connectivity and CloudWatch logging.
@@ -146,12 +144,14 @@ import { z } from 'zod'
 import * as strands from '@strands-agents/sdk'
 import express from 'express'
 
-const PORT = process.env.PORT || 8080
+const PORT = 8080
 
 const timestampTool = strands.tool({
   name: 'get_timestamp',
   description: 'Get the current timestamp',
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    unused: z.string().optional()
+  }),
   callback: () => {
     const timestamp = new Date().toISOString()
     console.log(`[TOOL] get_timestamp called: ${timestamp}`)
@@ -192,7 +192,7 @@ app.post('/invocations', express.raw({ type: '*/*' }), async (req, res) => {
   }
 })
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`[INFO] AgentCore Runtime server listening on 0.0.0.0:${PORT}`)
   console.log(`[INFO] Endpoints:`)
   console.log(`[INFO]   POST http://0.0.0.0:${PORT}/invocations`)
@@ -264,121 +264,25 @@ docker tag ${ECR_REPO}:latest \
 docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 ```
 
-### Create IAM Role
+### Deploy to Bedrock AgentCore via Console
 
-Create `create-iam-role.sh`:
-
-```bash
-#!/bin/bash
-
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-REGION=ap-southeast-1
-ROLE_NAME="BedrockAgentCoreRuntimeRole"
-
-TRUST_POLICY=$(cat <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "bedrock-agentcore.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {
-          "aws:SourceAccount": "${ACCOUNT_ID}"
-        }
-      }
-    }
-  ]
-}
-EOF
-)
-
-PERMISSIONS_POLICY=$(cat <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr:BatchGetImage",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:GetAuthorizationToken"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/bedrock-agentcore/runtimes/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-EOF
-)
-
-aws iam create-role \
-  --role-name ${ROLE_NAME} \
-  --assume-role-policy-document "${TRUST_POLICY}" 2>/dev/null || true
-
-aws iam put-role-policy \
-  --role-name ${ROLE_NAME} \
-  --policy-name AgentCoreRuntimeExecutionPolicy \
-  --policy-document "${PERMISSIONS_POLICY}"
-
-ROLE_ARN=$(aws iam get-role --role-name ${ROLE_NAME} --query 'Role.Arn' --output text)
-echo "Role ARN: ${ROLE_ARN}"
-```
-
-Run:
-
-```bash
-chmod +x create-iam-role.sh
-./create-iam-role.sh
-```
-
-### Deploy to Bedrock AgentCore
-
-```bash
-export ROLE_ARN=$(aws iam get-role \
-  --role-name BedrockAgentCoreRuntimeRole \
-  --query 'Role.Arn' \
-  --output text)
-
-aws bedrock-agentcore-control create-agent-runtime \
-  --agent-runtime-name agentcore_simple \
-  --agent-runtime-artifact containerConfiguration={containerUri=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest} \
-  --role-arn ${ROLE_ARN} \
-  --network-configuration networkMode=PUBLIC \
-  --protocol-configuration serverProtocol=HTTP \
-  --region ${AWS_REGION}
-```
+1. Go to **Bedrock Console** → **AgentCore** → **Runtimes** → **Create runtime**
+2. Configure:
+   - **Name**: `agentcore-simple`
+   - **Image URI**: `${ACCOUNT_ID}.dkr.ecr.ap-southeast-1.amazonaws.com/agentcore-simple:latest`
+   - **Execution role**: Select "Create and use a new service role"
+3. Click **Create**
 
 ### Enable VPC in Console
 
-1. Go to **Bedrock Console** → **AgentCore** → **Runtimes**
-2. Select your runtime
-3. Click **Edit** → **Network configuration**
-4. Select **VPC**
-5. Choose:
+1. Select your runtime
+2. Click **Edit** → **Network configuration**
+3. Select **VPC**
+4. Choose:
    - **VPC**: `project-vpc`
    - **Subnets**: All 3 private subnets
    - **Security group**: `agentcore-runtime-sg`
-6. Click **Save**
+5. Click **Save**
 
 ---
 
