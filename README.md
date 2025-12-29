@@ -7,7 +7,7 @@ Simple guide to deploy a TypeScript agent to Amazon Bedrock AgentCore Runtime wi
 - Node.js 18+
 - AWS account with appropriate permissions
 - AWS CLI configured with credentials
-- Python 3.10+ (for agentcore CLI)
+- Docker installed
 - Model access: Anthropic Claude Sonnet 4.5 enabled in Bedrock console (ap-southeast-1)
 
 ---
@@ -73,13 +73,6 @@ Create these 3 endpoints:
 
 ## Part 2: Create Agent
 
-### Install CLI
-
-```bash
-pip install bedrock-agentcore
-pip install bedrock-agentcore-starter-toolkit
-```
-
 ### Create Project
 
 ```bash
@@ -91,8 +84,8 @@ npm init -y
 ### Install Dependencies
 
 ```bash
-npm install @strands-agents/sdk zod
-npm install --save-dev typescript @types/node
+npm install @strands-agents/sdk zod express
+npm install --save-dev typescript @types/node @types/express
 ```
 
 ### Create Agent Code
@@ -102,6 +95,7 @@ Create `index.ts`:
 ```typescript
 import { Agent, BedrockModel, tool } from '@strands-agents/sdk'
 import { z } from 'zod'
+import express from 'express'
 
 const timestampTool = tool({
   name: 'get_timestamp',
@@ -124,32 +118,42 @@ const agent = new Agent({
   tools: [timestampTool],
 })
 
-async function handler(event: any) {
+const app = express()
+app.use(express.json())
+
+app.post('/invocations', async (req, res) => {
   try {
-    console.log('[INFO] Agent invoked with event:', JSON.stringify(event))
+    console.log('[INFO] Agent invoked with request:', JSON.stringify(req.body))
     
-    const prompt = event.prompt || event.input || 'Hello!'
+    const prompt = req.body.prompt || req.body.input || 'Hello!'
     console.log('[INFO] User prompt:', prompt)
     
     const result = await agent.invoke(prompt)
     
     console.log('[INFO] Agent response:', result)
     
-    return {
+    res.json({
       message: result,
       timestamp: new Date().toISOString(),
       status: 'success'
-    }
+    })
   } catch (error: any) {
     console.error('[ERROR] Error in agent:', error)
-    return {
+    res.status(500).json({
       error: error.message,
       status: 'error'
-    }
+    })
   }
-}
+})
 
-export { handler }
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy' })
+})
+
+const port = process.env.PORT || 8080
+app.listen(port, () => {
+  console.log(`[INFO] Agent listening on port ${port}`)
+})
 ```
 
 ### Create TypeScript Config
@@ -191,21 +195,15 @@ Edit `package.json`:
   },
   "dependencies": {
     "@strands-agents/sdk": "latest",
-    "zod": "^3.22.0"
+    "zod": "^3.22.0",
+    "express": "^4.18.2"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "@types/express": "^4.17.21"
   }
 }
-```
-
-### Create requirements.txt
-
-Create `requirements.txt`:
-
-```
-bedrock-agentcore>=0.1.0
 ```
 
 ### Build
@@ -218,58 +216,78 @@ npm run build
 
 ## Part 3: Deploy
 
-### Configure
+### Create Dockerfile
 
-```bash
-agentcore configure -e index.ts
+Create `Dockerfile`:
+
+```dockerfile
+FROM node:20-slim
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY dist ./dist
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+
+CMD ["node", "dist/index.js"]
 ```
 
-During configuration:
-- **Execution Role**: Press Enter to auto-create
-- **ECR Repository**: Press Enter to auto-create
-- **Dependency file**: Select `package.json`
-- **Authorization**: `no`
-- **Region**: `ap-southeast-1`
-
-### Launch
+### Build and Push to ECR
 
 ```bash
-agentcore launch
+# Get your account ID
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Create ECR repository
+aws ecr create-repository --repository-name agentcore-simple --region ap-southeast-1
+
+# Login to ECR
+aws ecr get-login-password --region ap-southeast-1 | \
+  docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.ap-southeast-1.amazonaws.com
+
+# Build and push
+docker build -t agentcore-simple .
+docker tag agentcore-simple:latest ${ACCOUNT_ID}.dkr.ecr.ap-southeast-1.amazonaws.com/agentcore-simple:latest
+docker push ${ACCOUNT_ID}.dkr.ecr.ap-southeast-1.amazonaws.com/agentcore-simple:latest
 ```
 
-Save the Agent ARN from output.
+### Deploy to Bedrock AgentCore
+
+1. Go to **Bedrock Console** → **AgentCore** → **Runtimes** → **Create runtime**
+2. Configure:
+   - **Name**: `agentcore-simple`
+   - **Image URI**: `${ACCOUNT_ID}.dkr.ecr.ap-southeast-1.amazonaws.com/agentcore-simple:latest`
+   - **Execution role**: Create new role or select existing
+3. Click **Create**
 
 ### Enable VPC in Console
 
-1. Go to **Bedrock AgentCore Console**
-2. Select your runtime
-3. Click **Edit** → **Network configuration**
-4. Select **VPC**
-5. Choose:
+1. Select your runtime
+2. Click **Edit** → **Network configuration**
+3. Select **VPC**
+4. Choose:
    - **VPC**: `project-vpc`
    - **Subnets**: All 3 private subnets
    - **Security group**: `agentcore-runtime-sg`
-6. Click **Save**
+5. Click **Save**
 
 ---
 
 ## Part 4: Test and Verify
 
-### Test with CLI
+### Test in Console
 
-```bash
-agentcore invoke '{"prompt": "What is the current timestamp?"}'
-```
-
-Expected output:
-
-```json
-{
-  "message": "Current timestamp: 2025-12-30T10:15:23.456Z",
-  "timestamp": "2025-12-30T10:15:23.456Z",
-  "status": "success"
-}
-```
+1. Go to **Bedrock Console** → **AgentCore** → **Runtimes**
+2. Select your runtime
+3. Click **Test** tab
+4. Enter prompt: `What is the current timestamp?`
+5. Click **Run**
 
 ### Check CloudWatch Logs
 
@@ -278,7 +296,7 @@ Expected output:
 3. Click log stream to see:
 
 ```
-[INFO] Agent invoked with event: {"prompt":"What is the current timestamp?"}
+[INFO] Agent invoked with request: {"prompt":"What is the current timestamp?"}
 [INFO] User prompt: What is the current timestamp?
 [TOOL] get_timestamp called: 2025-12-30T10:15:23.456Z
 [INFO] Agent response: Current timestamp: 2025-12-30T10:15:23.456Z
