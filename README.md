@@ -29,29 +29,18 @@ Simple guide to deploy a TypeScript agent to Amazon Bedrock AgentCore Runtime wi
    - **DNS options**: Enable both DNS hostnames and DNS resolution
 4. Click **Create VPC**
 
-### Create Additional VPC Endpoints
+### Additional VPC Endpoints (Optional)
 
-Go to **VPC Console** → **Endpoints** → **Create endpoint**
+Depending on your setup, you may need these VPC endpoints. If you create them, be sure to configure them with your security group and private subnets:
 
-Create these 3 endpoints:
-
-**1. ECR Docker Endpoint**
+**ECR Docker Endpoint**
 - **Service name**: `com.amazonaws.ap-southeast-1.ecr.dkr`
-- **VPC**: Select `project-vpc`
-- **Subnets**: Select all 3 private subnets
-- **Security group**: Create new `vpc-endpoints-sg` with inbound HTTPS (443) from 10.0.0.0/16
 
-**2. ECR API Endpoint**
+**ECR API Endpoint**
 - **Service name**: `com.amazonaws.ap-southeast-1.ecr.api`
-- **VPC**: Select `project-vpc`
-- **Subnets**: Select all 3 private subnets
-- **Security group**: Use `vpc-endpoints-sg`
 
-**3. CloudWatch Logs Endpoint**
+**CloudWatch Logs Endpoint**
 - **Service name**: `com.amazonaws.ap-southeast-1.logs`
-- **VPC**: Select `project-vpc`
-- **Subnets**: Select all 3 private subnets
-- **Security group**: Use `vpc-endpoints-sg`
 
 ### Create Security Group for AgentCore
 
@@ -149,9 +138,6 @@ const PORT = 8080
 const timestampTool = strands.tool({
   name: 'get_timestamp',
   description: 'Get the current timestamp',
-  inputSchema: z.object({
-    unused: z.string().optional()
-  }),
   callback: () => {
     const timestamp = new Date().toISOString()
     console.log(`[TOOL] get_timestamp called: ${timestamp}`)
@@ -178,16 +164,22 @@ app.get('/ping', (_, res) => {
 
 app.post('/invocations', express.raw({ type: '*/*' }), async (req, res) => {
   try {
-    console.log('[INFO] Invocation received')
     const prompt = new TextDecoder().decode(req.body)
+    console.log('[INFO] Invocation received')
     console.log('[INFO] Prompt:', prompt)
+    console.log('[INFO] Invoking agent...')
     
     const response = await agent.invoke(prompt)
-    console.log('[INFO] Response:', response)
+    
+    console.log('[INFO] Agent response generated')
+    console.log('[INFO] Response type:', typeof response)
+    console.log('[INFO] Response:', JSON.stringify(response))
     
     return res.json({ response })
-  } catch (err) {
-    console.error('[ERROR] Error processing request:', err)
+  } catch (err: any) {
+    console.error('[ERROR] Error processing request')
+    console.error('[ERROR] Error message:', err.message)
+    console.error('[ERROR] Error stack:', err.stack)
     return res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -248,19 +240,15 @@ aws ecr create-repository \
 ### Build and Push to ECR
 
 ```bash
-# Login to ECR
 aws ecr get-login-password --region ${AWS_REGION} | \
   docker login --username AWS --password-stdin \
   ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-# Build
 docker build --platform linux/arm64 -t ${ECR_REPO} .
 
-# Tag
 docker tag ${ECR_REPO}:latest \
   ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 
-# Push
 docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 ```
 
@@ -293,7 +281,7 @@ docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 1. Go to **Bedrock Console** → **AgentCore** → **Runtimes**
 2. Select your runtime
 3. Click **Test** tab
-4. Enter prompt: `What is the current timestamp?`
+4. Enter prompt: `{"prompt": "What is the current timestamp?"}`
 5. Click **Run**
 
 ### Check CloudWatch Logs
@@ -304,9 +292,25 @@ docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 
 ```
 [INFO] AgentCore Runtime server listening on 0.0.0.0:8080
+[INFO] Endpoints:
+[INFO]   POST http://0.0.0.0:8080/invocations
+[INFO]   GET  http://0.0.0.0:8080/ping
 [HEALTH] Ping received
 [INFO] Invocation received
 [INFO] Prompt: What is the current timestamp?
+[INFO] Invoking agent...
 [TOOL] get_timestamp called: 2025-12-30T10:15:23.456Z
-[INFO] Response: Current timestamp: 2025-12-30T10:15:23.456Z
+[INFO] Agent response generated
+[INFO] Response type: string
+[INFO] Response: "Current timestamp: 2025-12-30T10:15:23.456Z"
 ```
+
+---
+
+## Resources
+
+- [Strands Agents - Deploy to Bedrock AgentCore (TypeScript)](https://strandsagents.com/latest/documentation/docs/user-guide/deploy/deploy_to_bedrock_agentcore/typescript/)
+- [AWS Bedrock AgentCore VPC Configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html)
+- [AWS Bedrock AgentCore Samples - TypeScript MCP Server](https://github.com/awslabs/amazon-bedrock-agentcore-samples/tree/f8a09c72d99c1365a981eae0ef2738f7e7ba2ac0/01-tutorials/01-AgentCore-runtime/04-hosting-ts-MCP-server)
+- [AWS Bedrock AgentCore TypeScript SDK](https://github.com/aws/bedrock-agentcore-sdk-typescript)
+- [AWS Bedrock AgentCore Troubleshooting - Missing CloudWatch Logs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html#missing-cloudwatch-logs)
