@@ -329,6 +329,7 @@ The current timestamp is **2025-12-30T00:30:50.561Z** (in UTC/GMT timezone).[INF
 
 - [Strands Agents - Deploy to Bedrock AgentCore (TypeScript)](https://strandsagents.com/latest/documentation/docs/user-guide/deploy/deploy_to_bedrock_agentcore/typescript/)
 - [AWS Bedrock AgentCore VPC Configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html)
+- [AWS VPC Endpoint Requirements for Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html#agentcore-vpc-endpoints)
 - [AWS Bedrock AgentCore Samples - TypeScript MCP Server](https://github.com/awslabs/amazon-bedrock-agentcore-samples/tree/f8a09c72d99c1365a981eae0ef2738f7e7ba2ac0/01-tutorials/01-AgentCore-runtime/04-hosting-ts-MCP-server)
 - [AWS Bedrock AgentCore TypeScript SDK](https://github.com/aws/bedrock-agentcore-sdk-typescript)
 - [AWS Bedrock AgentCore Troubleshooting - Missing CloudWatch Logs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html#missing-cloudwatch-logs)
