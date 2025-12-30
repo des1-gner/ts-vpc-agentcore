@@ -244,22 +244,18 @@ docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 
 ### Deploy to Bedrock AgentCore via Console
 
-1. Go to **Bedrock Console** → **AgentCore** → **Runtimes** → **Create runtime**
+1. Go to **Bedrock Console** → **AgentCore** → **Runtimes** → **Host agent**
 2. Configure:
-   - **Name**: `ts-vpc-agentcore`
+   - **Name**: `ts_vpc_agentcore`
    - **Image URI**: `${ACCOUNT_ID}.dkr.ecr.<your-aws-region>.amazonaws.com/ts-vpc-agentcore:latest`
    - **Execution role**: Select "Create and use a new service role"
 3. Click **Create**
-
-### Enable VPC in Console
-
-1. Click **Update hosting**
-2. Under **Advanced configurations** → **Security**:
+4. Under **Advanced configurations** → **Security**:
    - Select **VPC (Virtual Private Cloud)**
    - **VPC**: Select `project-vpc`
    - **Subnets**: Select all 3 private subnets
    - **Security groups**: Select the default VPC security group (with all outbound traffic and inbound from itself)
-3. Click **Save changes**
+5. Click **Host agent**
 
 ---
 
@@ -283,49 +279,47 @@ Message
 
 No older events at this moment.
 Retry
-2025-12-30T00:05:50.206Z
+2025-12-30T00:30:16.136Z
 [INFO] AgentCore Runtime server listening on 0.0.0.0:8080
-2025-12-30T00:05:50.206Z
+2025-12-30T00:30:16.136Z
 [INFO] Endpoints:
-2025-12-30T00:05:50.206Z
+2025-12-30T00:30:16.136Z
 [INFO] POST http://0.0.0.0:8080/invocations
-2025-12-30T00:05:50.206Z
+2025-12-30T00:30:16.136Z
 [INFO] GET http://0.0.0.0:8080/ping
-2025-12-30T00:05:50.547Z
+2025-12-30T00:30:16.519Z
 [HEALTH] Ping received
-2025-12-30T00:05:52.024Z
+2025-12-30T00:30:48.511Z
 [INFO] Invocation received
-2025-12-30T00:05:52.026Z
+2025-12-30T00:30:48.511Z
 [INFO] Prompt: {"prompt": "What is the current timestamp?"}
-2025-12-30T00:05:52.026Z
+2025-12-30T00:30:48.512Z
 [INFO] Invoking agent...
-2025-12-30T00:05:52.548Z
+2025-12-30T00:30:50.088Z
 [HEALTH] Ping received
-2025-12-30T00:05:54.083Z
-I'll get the current timestamp for you.
-2025-12-30T00:05:54.083Z
+2025-12-30T00:30:50.444Z
 🔧 Tool #1: get_timestamp
-2025-12-30T00:05:54.174Z
-[TOOL] get_timestamp called: 2025-12-30T00:05:54.173Z
-2025-12-30T00:05:54.174Z
+2025-12-30T00:30:50.561Z
+[TOOL] get_timestamp called: 2025-12-30T00:30:50.561Z
+2025-12-30T00:30:50.561Z
 ✓ Tool completed
-2025-12-30T00:05:54.545Z
+2025-12-30T00:30:52.087Z
 [HEALTH] Ping received
-2025-12-30T00:05:56.356Z
-The current time is December 30, 2025, at 00:05:54 UTC (just after midnight).
-2025-12-30T00:05:56.546Z
-If you need this in a different timezone, let me know and I can convert it for[HEALTH] Ping received
-2025-12-30T00:05:56.636Z
-you![INFO] Agent response generated
-2025-12-30T00:05:56.636Z
+2025-12-30T00:30:52.624Z
+The current timestamp is **2025-12-30T00:30:50.561Z** (in UTC/GMT timezone).[INFO] Agent response generated
+2025-12-30T00:30:52.624Z
 [INFO] Response type: object
-2025-12-30T00:05:56.636Z
-[INFO] Response: {"type":"agentResult","stopReason":"endTurn","lastMessage":{"type":"message","role":"assistant","content":[{"type":"textBlock","text":"The current time is December 30, 2025, at 00:05:54 UTC (just after midnight).\n\nIf you need this in a different timezone, let me know and I can convert it for you!"}]}}
-2025-12-30T00:05:58.548Z
+2025-12-30T00:30:52.624Z
+[INFO] Response: {"type":"agentResult","stopReason":"endTurn","lastMessage":{"type":"message","role":"assistant","content":[{"type":"textBlock","text":"The current timestamp is **2025-12-30T00:30:50.561Z** (in UTC/GMT timezone)."}]}}
+2025-12-30T00:30:54.088Z
 [HEALTH] Ping received
-2025-12-30T00:06:00.549Z
+2025-12-30T00:30:56.090Z
 [HEALTH] Ping received
-2025-12-30T00:06:02.549Z
+2025-12-30T00:30:58.091Z
+[HEALTH] Ping received
+2025-12-30T00:31:00.092Z
+[HEALTH] Ping received
+2025-12-30T00:31:02.094Z
 [HEALTH] Ping received
 ```
 
