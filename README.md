@@ -8,7 +8,7 @@ Simple guide to deploy a TypeScript agent to Amazon Bedrock AgentCore Runtime wi
 - AWS account with appropriate permissions
 - AWS CLI configured with credentials
 - Docker installed
-- Model access: Anthropic Claude Sonnet 4.5 enabled in Bedrock console (ap-southeast-1)
+- Model access: Anthropic Claude Sonnet 4.5 enabled in Bedrock console
 
 ---
 
@@ -29,29 +29,26 @@ Simple guide to deploy a TypeScript agent to Amazon Bedrock AgentCore Runtime wi
    - **DNS options**: Enable both DNS hostnames and DNS resolution
 4. Click **Create VPC**
 
+### Security Group Configuration
+
+The default VPC security group (with all outbound traffic and inbound from itself) is sufficient for this setup. However, feel free to create your own security group. You will need to have the appropriate ports open depending on your setup:
+
+- Outbound: HTTPS (443) for AWS API calls
+- Outbound: HTTP (80) for package downloads (optional)
+- Inbound: Only from the security group itself (for health checks)
+
 ### Additional VPC Endpoints (Optional)
 
 Depending on your setup, you may need these VPC endpoints. If you create them, be sure to configure them with your security group and private subnets:
 
 **ECR Docker Endpoint**
-- **Service name**: `com.amazonaws.ap-southeast-1.ecr.dkr`
+- **Service name**: `com.amazonaws.<your-aws-region>.ecr.dkr`
 
 **ECR API Endpoint**
-- **Service name**: `com.amazonaws.ap-southeast-1.ecr.api`
+- **Service name**: `com.amazonaws.<your-aws-region>.ecr.api`
 
 **CloudWatch Logs Endpoint**
-- **Service name**: `com.amazonaws.ap-southeast-1.logs`
-
-### Create Security Group for AgentCore
-
-**EC2 Console** → **Security Groups** → **Create security group**
-
-- **Name**: `agentcore-runtime-sg`
-- **VPC**: Select `project-vpc`
-- **Outbound rules**:
-  - HTTPS (443) to 0.0.0.0/0
-  - HTTP (80) to 0.0.0.0/0
-- **Inbound rules**: None
+- **Service name**: `com.amazonaws.<your-aws-region>.logs`
 
 **Save these for later:**
 - VPC ID: `vpc-xxxxxxxxx`
@@ -65,8 +62,8 @@ Depending on your setup, you may need these VPC endpoints. If you create them, b
 ### Create Project
 
 ```bash
-mkdir agentcore-simple
-cd agentcore-simple
+mkdir ts-vpc-agentcore
+cd ts-vpc-agentcore
 ```
 
 ### Create package.json
@@ -75,7 +72,7 @@ Create `package.json`:
 
 ```json
 {
-  "name": "agentcore-simple",
+  "name": "ts-vpc-agentcore",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -147,7 +144,7 @@ const timestampTool = strands.tool({
 
 const agent = new strands.Agent({
   model: new strands.BedrockModel({
-    region: 'ap-southeast-1',
+    region: process.env.AWS_REGION || 'us-east-1',
   }),
   tools: [timestampTool],
 })
@@ -225,8 +222,8 @@ CMD ["node", "dist/index.js"]
 
 ```bash
 export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export AWS_REGION=ap-southeast-1
-export ECR_REPO=agentcore-simple
+export AWS_REGION=<your-aws-region>
+export ECR_REPO=ts-vpc-agentcore
 ```
 
 ### Create ECR Repository
@@ -256,21 +253,20 @@ docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 
 1. Go to **Bedrock Console** → **AgentCore** → **Runtimes** → **Create runtime**
 2. Configure:
-   - **Name**: `agentcore-simple`
-   - **Image URI**: `${ACCOUNT_ID}.dkr.ecr.ap-southeast-1.amazonaws.com/agentcore-simple:latest`
+   - **Name**: `ts-vpc-agentcore`
+   - **Image URI**: `${ACCOUNT_ID}.dkr.ecr.<your-aws-region>.amazonaws.com/ts-vpc-agentcore:latest`
    - **Execution role**: Select "Create and use a new service role"
 3. Click **Create**
 
 ### Enable VPC in Console
 
-1. Select your runtime
-2. Click **Edit** → **Network configuration**
-3. Select **VPC**
-4. Choose:
-   - **VPC**: `project-vpc`
-   - **Subnets**: All 3 private subnets
-   - **Security group**: `agentcore-runtime-sg`
-5. Click **Save**
+1. Click **Update hosting**
+2. Under **Advanced configurations** → **Security**:
+   - Select **VPC (Virtual Private Cloud)**
+   - **VPC**: Select `project-vpc`
+   - **Subnets**: Select all 3 private subnets
+   - **Security groups**: Select the default VPC security group (with all outbound traffic and inbound from itself)
+3. Click **Save changes**
 
 ---
 
@@ -278,31 +274,66 @@ docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 
 ### Test in Console
 
-1. Go to **Bedrock Console** → **AgentCore** → **Runtimes**
-2. Select your runtime
-3. Click **Test** tab
-4. Enter prompt: `{"prompt": "What is the current timestamp?"}`
-5. Click **Run**
+1. Click **Test** → **Agent sandbox**
+2. Enter prompt: `{"prompt": "What is the current timestamp?"}`
+3. Click **Run**
 
 ### Check CloudWatch Logs
 
 1. Go to **CloudWatch Console** → **Log groups**
 2. Find `/aws/bedrock-agentcore/runtimes/{your-agent-id}-DEFAULT`
-3. Click log stream to see:
+3. Click on a log stream (format: `YYYY/MM/DD/[runtime-logs]xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+4. You should see output similar to:
 
 ```
+Message
+
+No older events at this moment.
+Retry
+2025-12-30T00:05:50.206Z
 [INFO] AgentCore Runtime server listening on 0.0.0.0:8080
+2025-12-30T00:05:50.206Z
 [INFO] Endpoints:
-[INFO]   POST http://0.0.0.0:8080/invocations
-[INFO]   GET  http://0.0.0.0:8080/ping
+2025-12-30T00:05:50.206Z
+[INFO] POST http://0.0.0.0:8080/invocations
+2025-12-30T00:05:50.206Z
+[INFO] GET http://0.0.0.0:8080/ping
+2025-12-30T00:05:50.547Z
 [HEALTH] Ping received
+2025-12-30T00:05:52.024Z
 [INFO] Invocation received
-[INFO] Prompt: What is the current timestamp?
+2025-12-30T00:05:52.026Z
+[INFO] Prompt: {"prompt": "What is the current timestamp?"}
+2025-12-30T00:05:52.026Z
 [INFO] Invoking agent...
-[TOOL] get_timestamp called: 2025-12-30T10:15:23.456Z
-[INFO] Agent response generated
-[INFO] Response type: string
-[INFO] Response: "Current timestamp: 2025-12-30T10:15:23.456Z"
+2025-12-30T00:05:52.548Z
+[HEALTH] Ping received
+2025-12-30T00:05:54.083Z
+I'll get the current timestamp for you.
+2025-12-30T00:05:54.083Z
+🔧 Tool #1: get_timestamp
+2025-12-30T00:05:54.174Z
+[TOOL] get_timestamp called: 2025-12-30T00:05:54.173Z
+2025-12-30T00:05:54.174Z
+✓ Tool completed
+2025-12-30T00:05:54.545Z
+[HEALTH] Ping received
+2025-12-30T00:05:56.356Z
+The current time is December 30, 2025, at 00:05:54 UTC (just after midnight).
+2025-12-30T00:05:56.546Z
+If you need this in a different timezone, let me know and I can convert it for[HEALTH] Ping received
+2025-12-30T00:05:56.636Z
+you![INFO] Agent response generated
+2025-12-30T00:05:56.636Z
+[INFO] Response type: object
+2025-12-30T00:05:56.636Z
+[INFO] Response: {"type":"agentResult","stopReason":"endTurn","lastMessage":{"type":"message","role":"assistant","content":[{"type":"textBlock","text":"The current time is December 30, 2025, at 00:05:54 UTC (just after midnight).\n\nIf you need this in a different timezone, let me know and I can convert it for you!"}]}}
+2025-12-30T00:05:58.548Z
+[HEALTH] Ping received
+2025-12-30T00:06:00.549Z
+[HEALTH] Ping received
+2025-12-30T00:06:02.549Z
+[HEALTH] Ping received
 ```
 
 ---
@@ -314,3 +345,4 @@ docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
 - [AWS Bedrock AgentCore Samples - TypeScript MCP Server](https://github.com/awslabs/amazon-bedrock-agentcore-samples/tree/f8a09c72d99c1365a981eae0ef2738f7e7ba2ac0/01-tutorials/01-AgentCore-runtime/04-hosting-ts-MCP-server)
 - [AWS Bedrock AgentCore TypeScript SDK](https://github.com/aws/bedrock-agentcore-sdk-typescript)
 - [AWS Bedrock AgentCore Troubleshooting - Missing CloudWatch Logs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html#missing-cloudwatch-logs)
+- [AWS re:Post - AgentCore Runtime Container Starts but Handler Never Invoked](https://repost.aws/questions/QUGJD3q8ZKTRq0NwH6kK7njQ/agentcore-runtime-container-starts-but-handler-never-invoked-no-cloudwatch-logs)
