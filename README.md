@@ -59,13 +59,6 @@ Depending on your setup, you may need these VPC endpoints. If you create them, b
 
 ## Part 2: Create Agent
 
-### Create Project
-
-```bash
-mkdir ts-vpc-agentcore
-cd ts-vpc-agentcore
-```
-
 ### Create package.json
 
 Create `package.json`:
